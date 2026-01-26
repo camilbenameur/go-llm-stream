@@ -1,6 +1,6 @@
 # Performance Benchmarks
 
-This document contains benchmark results for go-llm-stream v1.1.0.
+This document contains benchmark results for go-llm-stream v1.1.2.
 
 ## Test Environment
 
