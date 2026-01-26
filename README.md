@@ -48,7 +48,7 @@ for token := range healer.Tokens() {
 
 ## Status
 
-- **v1.0.0**: Stable release. Verified core, healer, and SSE adapters.
+- **v1.1.0**: Stable release. Verified core, healer, and SSE adapters.
 
 ## Technical Details
 
