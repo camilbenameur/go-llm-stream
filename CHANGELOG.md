@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Push API** (`stream.Writer`): an `io.Writer`-based entry point so callers can write
+  chunks as they arrive instead of supplying an `io.Reader`. Provides an `OnToken`
+  callback, `NextToken` pull-drain, and `Flush`/`Close`. (Addresses community feedback.)
+- **Multi-shape delta extraction** (`openai`): `WithDeltaPaths(...)` tries several
+  candidate JSON paths in order, and `WithAnthropicFormat()` plus `OpenAIDeltaPath` /
+  `AnthropicDeltaPath` constants let one `Stream` consume OpenAI- and Anthropic-style
+  events. Unexpected/empty/metadata events are skipped gracefully.
 - **Fuzz testing** for the `scanner` and `healer` packages (`FuzzScanner`, `FuzzHeal`),
   cross-checked against `encoding/json.Valid`, with seed and regression corpora.
 - **Head-to-head streaming benchmark** (`scanner/comparison_bench_test.go`) comparing the
@@ -18,11 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Scanner**: numbers inside containers now finalize correctly on trailing whitespace
   (previously the scanner could stay stuck in a numeric state). Found by fuzzing.
+- **Tokenizer**: `Append` no longer corrupts `Token.Start` for an in-progress literal
+  when fed many small chunks. Found while testing the push API.
 - **Healer**: `Closer.Closure()` now completes a dangling/just-closed object key with
   `:"null"` instead of emitting invalid JSON like `{""}`. Found by fuzzing.
 - **OpenAI adapter**: healing now routes through the real `healer` package instead of a
   naive `strings.Count` bracket balancer, removing an internal contradiction with the
   library's own thesis.
+
+### Performance
+
+- Reduced allocations in hot paths: reuse the `FilterReader` read buffer, cache the split
+  delta path per `Stream`, and reuse the `StreamReader` read channel
+  (`BenchmarkStreamReaderSmall`: 25 → 23 allocs/op, 5126 → 4990 B/op). No API change.
 
 ### Changed
 
