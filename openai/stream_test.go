@@ -231,6 +231,42 @@ data: [DONE]
 	}
 }
 
+func TestStream_HealJSON_TruncatedPayload_Recovered(t *testing.T) {
+	// A truncated SSE event: the JSON object is cut off mid-string,
+	// with no closing quote or braces.
+	input := `data: {"choices":[{"delta":{"content":"hel
+
+data: [DONE]
+
+`
+	stream := NewStream(context.Background(), strings.NewReader(input),
+		WithHealJSON(true))
+
+	delta, err := stream.NextDelta()
+	if err != nil {
+		t.Fatalf("expected healing to recover content, got error: %v", err)
+	}
+	if delta != "hel" {
+		t.Errorf("expected healed content 'hel', got %q", delta)
+	}
+}
+
+func TestStream_NoHealJSON_TruncatedPayload_Skipped(t *testing.T) {
+	// Same truncated payload, but healing disabled: the malformed event
+	// should be skipped, leaving only [DONE] -> io.EOF.
+	input := `data: {"choices":[{"delta":{"content":"hel
+
+data: [DONE]
+
+`
+	stream := NewStream(context.Background(), strings.NewReader(input))
+
+	_, err := stream.NextDelta()
+	if err != io.EOF {
+		t.Errorf("expected truncated payload to be skipped resulting in io.EOF, got %v", err)
+	}
+}
+
 func TestStream_NextEvent(t *testing.T) {
 	input := `event: ping
 data: keep-alive

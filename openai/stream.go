@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/camilbenameur/go-llm-stream/healer"
 	"github.com/camilbenameur/go-llm-stream/sse"
 )
 
@@ -164,8 +165,8 @@ func (s *Stream) extractDelta(data string) (string, error) {
 	if err := json.Unmarshal([]byte(data), &payload); err != nil {
 		// Try to heal the JSON if enabled
 		if s.opts.HealJSON {
-			healed := s.healJSON(data)
-			if err := json.Unmarshal([]byte(healed), &payload); err != nil {
+			healed := healer.HealJSON([]byte(data))
+			if err := json.Unmarshal(healed, &payload); err != nil {
 				return "", err
 			}
 		} else {
@@ -219,32 +220,6 @@ func (s *Stream) navigatePath(data map[string]any, path string) (string, error) 
 		}
 		return string(b), nil
 	}
-}
-
-// healJSON attempts to heal truncated JSON.
-func (s *Stream) healJSON(data string) string {
-	// Simple healing: ensure balanced brackets
-	openBraces := strings.Count(data, "{") - strings.Count(data, "}")
-	openBrackets := strings.Count(data, "[") - strings.Count(data, "]")
-
-	var sb strings.Builder
-	sb.WriteString(data)
-
-	// Close any open strings (simple heuristic)
-	quoteCount := strings.Count(data, `"`) - strings.Count(data, `\"`)
-	if quoteCount%2 != 0 {
-		sb.WriteByte('"')
-	}
-
-	// Close brackets and braces
-	for i := 0; i < openBrackets; i++ {
-		sb.WriteByte(']')
-	}
-	for i := 0; i < openBraces; i++ {
-		sb.WriteByte('}')
-	}
-
-	return sb.String()
 }
 
 // Chunk represents a parsed chunk from the OpenAI stream.
@@ -307,8 +282,8 @@ func (s *Stream) NextChunk() (*Chunk, error) {
 		if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 			// Try to heal if enabled
 			if s.opts.HealJSON {
-				healed := s.healJSON(event.Data)
-				if err := json.Unmarshal([]byte(healed), &chunk); err != nil {
+				healed := healer.HealJSON([]byte(event.Data))
+				if err := json.Unmarshal(healed, &chunk); err != nil {
 					continue // Skip malformed chunks
 				}
 			} else {
