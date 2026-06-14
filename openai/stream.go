@@ -12,11 +12,12 @@ import (
 // Stream provides an OpenAI-compatible streaming interface.
 // It reads SSE events from an LLM API and extracts content deltas.
 type Stream struct {
-	decoder *sse.Decoder
-	ctx     context.Context
-	opts    Options
-	done    bool
-	err     error
+	decoder   *sse.Decoder
+	ctx       context.Context
+	opts      Options
+	pathParts []string
+	done      bool
+	err       error
 }
 
 // Options configures the OpenAI stream behavior.
@@ -174,12 +175,14 @@ func (s *Stream) extractDelta(data string) (string, error) {
 	}
 
 	// Navigate the path to extract content
-	return s.navigatePath(payload, s.opts.DeltaPath)
+	if s.pathParts == nil {
+		s.pathParts = strings.Split(s.opts.DeltaPath, ".")
+	}
+	return s.navigatePath(payload, s.pathParts)
 }
 
 // navigatePath navigates a dot-separated path through a JSON object.
-func (s *Stream) navigatePath(data map[string]any, path string) (string, error) {
-	parts := strings.Split(path, ".")
+func (s *Stream) navigatePath(data map[string]any, parts []string) (string, error) {
 	var current any = data
 
 	for _, part := range parts {
