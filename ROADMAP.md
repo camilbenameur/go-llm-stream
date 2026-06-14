@@ -165,3 +165,6 @@ strawman) was already resolved by T2. These are the remaining, still-valid point
 - **Acceptance:** tests for varied delta shapes (OpenAI vs Anthropic-style); clearer
   docs on `WithDeltaPath`; graceful handling of unexpected shapes; suite green.
 - **Depends-on:** T8 (same file). **Parallel-safe:** no.
+
+**Round 2 complete (2026-06-15).** T7, T8, T9 merged to `develop`; full suite green.
+The top-voted Reddit critique (O(n²) is a strawman) was already resolved in round 1 (T2).
