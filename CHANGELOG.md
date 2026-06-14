@@ -5,7 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Fuzz testing** for the `scanner` and `healer` packages (`FuzzScanner`, `FuzzHeal`),
+  cross-checked against `encoding/json.Valid`, with seed and regression corpora.
+- **Head-to-head streaming benchmark** (`scanner/comparison_bench_test.go`) comparing the
+  naive accumulate-and-re-parse anti-pattern, `encoding/json.Decoder`, and `StreamReader`.
+
+### Fixed
+
+- **Scanner**: numbers inside containers now finalize correctly on trailing whitespace
+  (previously the scanner could stay stuck in a numeric state). Found by fuzzing.
+- **Healer**: `Closer.Closure()` now completes a dangling/just-closed object key with
+  `:"null"` instead of emitting invalid JSON like `{""}`. Found by fuzzing.
+- **OpenAI adapter**: healing now routes through the real `healer` package instead of a
+  naive `strings.Count` bracket balancer, removing an internal contradiction with the
+  library's own thesis.
+
+### Changed
+
+- **Docs**: the O(n²) performance claim has been corrected. It applies only to the
+  re-parse-the-whole-buffer-on-every-chunk anti-pattern, not to `encoding/json.Decoder`
+  (which is O(n) and faster than `StreamReader` on raw token scanning). README and
+  PERFORMANCE.md reframed around the library's real differentiators: healing,
+  incremental field access, and resumability.
+
+## [1.2.0] - 2026-01-26
+
+### Changed
+
+- First clean tagged release. Retracts the messy intermediate versions `v1.0.1` through
+  `v1.1.2` (see `retract` directive in `go.mod`); functionally equivalent to the
+  `v1.1.2` content with the retraction recorded.
+
 ## [1.1.2] - 2026-01-26
+
+> **Retracted.** Use `v1.2.0` or later.
 
 ### Added
 

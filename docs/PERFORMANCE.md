@@ -1,6 +1,6 @@
 # Performance Benchmarks
 
-This document contains benchmark results for go-llm-stream v1.1.2.
+This document contains benchmark results for go-llm-stream v1.2.0.
 
 ## Test Environment
 
@@ -68,17 +68,28 @@ The stress test (`docs/examples/stress_test/main.go`) processes 100,000 JSON obj
 
 This demonstrates constant memory overhead regardless of input size.
 
-## Comparison with Standard Library
+## Comparison with the standard library (corrected)
 
-The `encoding/json` package's streaming approach accumulates the entire buffer and re-parses on each chunk, resulting in O(n²) complexity for streaming scenarios. In contrast, go-llm-stream:
+> An earlier version of this document claimed `encoding/json` is inherently O(n²) for
+> streaming. The head-to-head benchmark below **disproves that** and the claim has been
+> corrected here for accuracy.
 
-1. Processes each byte exactly once: O(n)
-2. Uses sync.Pool for buffer reuse
-3. Maintains constant memory footprint
+`encoding/json.Decoder` — the idiomatic stdlib streaming API — is **O(n)** and, in the
+benchmark below, is actually **2–3× faster per op** than this library's `StreamReader` on
+raw chunked token scanning. The quadratic blow-up only appears in the *accumulate-and-
+re-parse-the-whole-buffer-on-every-chunk* anti-pattern (`NaiveReparse`), which is **not**
+how the stdlib decoder is meant to be used.
 
-For a 1MB streaming response, this can mean the difference between:
-- **encoding/json**: ~500 full parses (assuming 2KB average chunks)
-- **go-llm-stream**: 1 incremental parse
+So the honest positioning is:
+
+1. If you just need to parse a stream of JSON fast, `encoding/json.Decoder` is excellent —
+   use it.
+2. go-llm-stream earns its place when you need things the stdlib does **not** offer:
+   **resumability / snapshot-restore** across reconnects, **byte-level healing** of
+   truncated or markdown-wrapped LLM JSON, and **zero-allocation scanning** when feeding a
+   contiguous buffer to the low-level `Scanner`.
+
+See the measured head-to-head below.
 
 ## Head-to-head: large streamed JSON value
 
