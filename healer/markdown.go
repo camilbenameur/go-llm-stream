@@ -181,6 +181,7 @@ type FilterReader struct {
 	reader io.Reader
 	filter *MarkdownFilter
 	buf    []byte
+	rawBuf []byte
 	pos    int
 	len    int
 }
@@ -191,6 +192,7 @@ func NewFilterReader(r io.Reader) *FilterReader {
 		reader: r,
 		filter: NewMarkdownFilter(),
 		buf:    make([]byte, 4096),
+		rawBuf: make([]byte, 4096),
 	}
 }
 
@@ -205,11 +207,10 @@ func (fr *FilterReader) Read(p []byte) (n int, err error) {
 		}
 
 		// Read more data
-		rawBuf := make([]byte, 4096)
-		rawN, err := fr.reader.Read(rawBuf)
+		rawN, err := fr.reader.Read(fr.rawBuf)
 
 		if rawN > 0 {
-			filtered := fr.filter.Filter(rawBuf[:rawN])
+			filtered := fr.filter.Filter(fr.rawBuf[:rawN])
 			if len(filtered) > 0 {
 				fr.pos = 0
 				fr.len = copy(fr.buf, filtered)
