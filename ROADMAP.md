@@ -116,9 +116,52 @@ Each task: **goal · files · acceptance criteria · depends-on · parallel-safe
 
 ## Done = portfolio-ready when
 
-- [ ] README leads with a defensible, real-world use case (T1)
-- [ ] Performance claim is either proven or removed (T2)
-- [ ] No internal contradiction between thesis and adapter (T3)
-- [ ] Fuzz testing demonstrates rigor (T4)
-- [ ] Version/release story is coherent (T5)
-- [ ] A 10-second "I get it" demo exists (T6)
+- [x] README leads with a defensible, real-world use case (T1)
+- [x] Performance claim is either proven or removed (T2 — verdict: SOFTEN)
+- [x] No internal contradiction between thesis and adapter (T3)
+- [x] Fuzz testing demonstrates rigor (T4 — found + fixed 2 real bugs)
+- [x] Version/release story is coherent (T5 — current release v1.2.0)
+- [x] A 10-second "I get it" demo exists (T6 — docs/examples/structured_streaming)
+
+**Round 1 complete (2026-06-15).** All merged to `develop`, suite green.
+
+---
+
+## Round 2 — community feedback (r/golang)
+
+Source: feedback on the Reddit post. The top-voted critique (the O(n²) premise is a
+strawman) was already resolved by T2. These are the remaining, still-valid points.
+
+### T7 — Push API (`io.Writer`)  🔴 `needs-go`
+- **Goal:** Offer a push-style entry point so callers can *write* chunks as they arrive,
+  not only supply an `io.Reader`. Wraps the existing internal `Tokenizer.Append([]byte)`.
+- **Files:** new `stream/writer.go` + `stream/writer_test.go` (do NOT modify
+  `scanner/reader.go` — keep disjoint from T8).
+- **Acceptance:**
+  - A `stream.Writer` (or similar) implements `io.Writer`; each `Write` feeds the
+    tokenizer and surfaces tokens (callback `OnToken func(Token)` and/or `NextToken`).
+  - A healing variant or option is available.
+  - Tests prove chunked `Write` calls yield the same tokens as the reader-based path.
+  - `go test ./stream/...` green, `go vet` clean, public API additive only.
+- **Depends-on:** none. **Parallel-safe:** yes (new files).
+
+### T8 — Allocation / efficiency pass  🔴 `needs-go`
+- **Goal:** Cut allocations and `[]byte`↔`string` round-trips; replace `strings.*` with
+  `bytes.*` in hot paths. Our own T2 benchmark shows `StreamReader` is allocation-heavy.
+- **Files:** `healer/markdown.go`, `openai/stream.go`, `scanner/reader.go` (read path).
+- **Acceptance:**
+  - Behavior unchanged — full suite stays green; no public API change.
+  - Measurable allocation/throughput improvement shown by running the relevant benchmarks
+    (scanner comparison bench, healer/markdown benches) **before and after**, with both
+    numbers pasted into the final report.
+  - `go vet` clean.
+- **Depends-on:** none. **Parallel-safe:** yes (disjoint from T7). Conflicts with T9 on
+  `openai/stream.go` — run T9 after.
+
+### T9 — Stream-shape robustness  🟡 `needs-go` (lower priority, run after T8)
+- **Goal:** Reduce the OpenAI adapter's coupling to one exact JSON shape; the
+  scanner/healer core is already shape-agnostic. Support provider variations gracefully.
+- **Files:** `openai/stream.go`, `openai/stream_test.go` (+ maybe a small Anthropic note).
+- **Acceptance:** tests for varied delta shapes (OpenAI vs Anthropic-style); clearer
+  docs on `WithDeltaPath`; graceful handling of unexpected shapes; suite green.
+- **Depends-on:** T8 (same file). **Parallel-safe:** no.
