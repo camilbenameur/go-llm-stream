@@ -57,7 +57,8 @@ type Closer struct {
 	inNumber    bool // Inside a number literal
 	inLiteral   bool // Inside a literal (true, false, null)
 	literalBuf  []byte
-	escapeCount int // Count of hex digits after \u
+	escapeCount int  // Count of hex digits after \u
+	pendingKey  bool // Innermost object has an open/completed key with no ':value' yet
 }
 
 // Pool for closer reuse
@@ -96,6 +97,7 @@ func (c *Closer) Reset() {
 	c.inLiteral = false
 	c.literalBuf = c.literalBuf[:0]
 	c.escapeCount = 0
+	c.pendingKey = false
 }
 
 // Feed processes input bytes and updates the internal state.
@@ -126,6 +128,13 @@ func (c *Closer) feedByte(b byte) {
 		}
 		if b == '"' {
 			c.inString = false
+			if !c.afterColon && len(c.stack) > 0 && c.stack[len(c.stack)-1] == ClosureObject {
+				// This string just closed in object-key position: it is a
+				// key awaiting ':value'.
+				c.pendingKey = true
+			} else {
+				c.pendingKey = false
+			}
 			c.afterColon = false
 			c.afterComma = false
 		}
@@ -178,6 +187,7 @@ func (c *Closer) feedByte(b byte) {
 		}
 		c.afterColon = false
 		c.afterComma = false
+		c.pendingKey = false
 
 	case ']':
 		if len(c.stack) > 0 && c.stack[len(c.stack)-1] == ClosureArray {
@@ -185,6 +195,7 @@ func (c *Closer) feedByte(b byte) {
 		}
 		c.afterColon = false
 		c.afterComma = false
+		c.pendingKey = false
 
 	case '"':
 		c.inString = true
@@ -194,6 +205,7 @@ func (c *Closer) feedByte(b byte) {
 	case ':':
 		c.afterColon = true
 		c.afterComma = false
+		c.pendingKey = false
 
 	case ',':
 		c.afterComma = true
@@ -222,6 +234,11 @@ func (c *Closer) Closure() []byte {
 	// Close incomplete string
 	if c.inString {
 		buf.WriteByte('"')
+		if !c.afterColon && len(c.stack) > 0 && c.stack[len(c.stack)-1] == ClosureObject {
+			// The string being closed is an object key with no ':value'
+			// yet - supply a placeholder value to keep the pair valid.
+			buf.WriteString(`:"null"`)
+		}
 		// String counts as a value, so clear afterColon/afterComma status
 		// since the value was provided (the string itself)
 	} else if c.inLiteral {
@@ -245,6 +262,12 @@ func (c *Closer) Closure() []byte {
 		// Handle after colon - need a value
 		if c.afterColon {
 			buf.WriteString("null")
+		}
+
+		// A completed object key with no ':value' yet (e.g. `{"a"`)
+		// needs a placeholder value to form a valid key:value pair.
+		if c.pendingKey {
+			buf.WriteString(`:"null"`)
 		}
 	}
 
