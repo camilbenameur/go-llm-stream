@@ -171,10 +171,20 @@ func (t *Tokenizer) Reset() {
 func (t *Tokenizer) Append(data []byte) {
 	// If we've consumed all the buffer, reset position
 	if t.position >= len(t.buffer) {
+		if t.inLiteral {
+			// A literal's absolute start position (bufferOffset + tokenStart)
+			// must remain stable across this reset. Since the whole buffer
+			// is being discarded, shift tokenStart by the same amount
+			// bufferOffset advances so the sum is unchanged. tokenStart may
+			// become negative; that's fine, it's only ever used relative to
+			// bufferOffset.
+			t.tokenStart -= len(t.buffer)
+		} else {
+			t.tokenStart = 0
+		}
 		t.bufferOffset += int64(len(t.buffer))
 		t.buffer = t.buffer[:0]
 		t.position = 0
-		t.tokenStart = 0
 	}
 
 	// If there's unconsumed data and we're starting a new token,
