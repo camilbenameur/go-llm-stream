@@ -91,8 +91,8 @@ The scanner and healer are **fuzz-tested** (`go test -fuzz`) and cross-checked a
 
 ## Status
 
-- **Current release: v1.2.0** (first clean tagged release; earlier `v1.0.1`–`v1.1.2` are [retracted](go.mod)).
-- `develop` contains unreleased improvements — see the [Unreleased](CHANGELOG.md) changelog section.
+- **Current release: v1.3.0** (push `io.Writer` API, multi-shape OpenAI/Anthropic deltas, fuzzing, perf; earlier `v1.0.1`–`v1.1.2` are [retracted](go.mod)).
+- See the [Changelog](CHANGELOG.md) for the full history.
 
 ## License
 

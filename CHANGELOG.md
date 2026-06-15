@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [1.3.0] - 2026-06-15
+
 ### Added
 
 - **Push API** (`stream.Writer`): an `io.Writer`-based entry point so callers can write
