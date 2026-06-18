@@ -6,27 +6,47 @@ import (
 	"io"
 	"strings"
 
+	"github.com/camilbenameur/go-llm-stream/healer"
 	"github.com/camilbenameur/go-llm-stream/sse"
 )
 
-// Stream provides an OpenAI-compatible streaming interface.
-// It reads SSE events from an LLM API and extracts content deltas.
+// Common delta paths for the providers this adapter is known to work with.
+// Pass them to WithDeltaPath / WithDeltaPaths, or use the convenience options.
+const (
+	// OpenAIDeltaPath is the content path for OpenAI-style chat completion chunks.
+	OpenAIDeltaPath = "choices.0.delta.content"
+	// AnthropicDeltaPath is the text path for Anthropic content_block_delta events.
+	AnthropicDeltaPath = "delta.text"
+)
+
+// Stream provides a streaming content extractor for LLM SSE APIs.
+// It reads SSE events and pulls out content deltas by JSON path. The default
+// path targets OpenAI-style chunks, but the path(s) are configurable so the same
+// type can consume other shapes (e.g. Anthropic) — see WithDeltaPaths and
+// WithAnthropicFormat.
 type Stream struct {
-	decoder *sse.Decoder
-	ctx     context.Context
-	opts    Options
-	done    bool
-	err     error
+	decoder    *sse.Decoder
+	ctx        context.Context
+	opts       Options
+	deltaPaths [][]string // cached, split candidate paths (lazy)
+	done       bool
+	err        error
 }
 
-// Options configures the OpenAI stream behavior.
+// Options configures the stream behavior.
 type Options struct {
 	// HealJSON enables JSON healing for malformed/truncated payloads.
 	HealJSON bool
 
 	// DeltaPath is the JSON path to the content delta.
-	// Default: "choices.0.delta.content"
+	// Default: "choices.0.delta.content". Ignored if DeltaPaths is set.
 	DeltaPath string
+
+	// DeltaPaths is an ordered list of candidate JSON paths. For each event the
+	// first path that yields content wins. Use this for streams whose shape
+	// varies (e.g. mixed OpenAI/Anthropic events). When non-empty it takes
+	// precedence over DeltaPath.
+	DeltaPaths []string
 
 	// DoneMarker is the string that signals end of stream.
 	// Default: "[DONE]"
@@ -56,6 +76,31 @@ func WithHealJSON(enable bool) Option {
 func WithDeltaPath(path string) Option {
 	return func(o *Options) {
 		o.DeltaPath = path
+	}
+}
+
+// WithDeltaPaths sets multiple candidate JSON paths, tried in order; the first
+// path that yields content for a given event wins. Use this to consume streams
+// whose shape varies. It overrides WithDeltaPath.
+//
+// Example — accept either OpenAI or Anthropic deltas from the same stream:
+//
+//	openai.NewStream(ctx, r, openai.WithDeltaPaths(openai.OpenAIDeltaPath, openai.AnthropicDeltaPath))
+func WithDeltaPaths(paths ...string) Option {
+	return func(o *Options) {
+		o.DeltaPaths = paths
+	}
+}
+
+// WithAnthropicFormat configures the stream for Anthropic-style streaming, where
+// content arrives as content_block_delta events with the text at "delta.text".
+//
+// Scope: this maps the delta *content shape* only. Anthropic-specific event
+// semantics (event: lines, message_stop, ping) are not interpreted — non-content
+// events are simply skipped and the stream ends when the reader closes.
+func WithAnthropicFormat() Option {
+	return func(o *Options) {
+		o.DeltaPaths = []string{AnthropicDeltaPath}
 	}
 }
 
@@ -164,8 +209,8 @@ func (s *Stream) extractDelta(data string) (string, error) {
 	if err := json.Unmarshal([]byte(data), &payload); err != nil {
 		// Try to heal the JSON if enabled
 		if s.opts.HealJSON {
-			healed := s.healJSON(data)
-			if err := json.Unmarshal([]byte(healed), &payload); err != nil {
+			healed := healer.HealJSON([]byte(data))
+			if err := json.Unmarshal(healed, &payload); err != nil {
 				return "", err
 			}
 		} else {
@@ -173,13 +218,42 @@ func (s *Stream) extractDelta(data string) (string, error) {
 		}
 	}
 
-	// Navigate the path to extract content
-	return s.navigatePath(payload, s.opts.DeltaPath)
+	// Try each candidate path in order; the first that yields content wins.
+	// This lets one Stream tolerate shape variation (e.g. OpenAI's
+	// choices.0.delta.content vs Anthropic's delta.text) and gracefully skip
+	// events that don't carry content (returning io.EOF so NextDelta moves on).
+	lastErr := error(io.EOF)
+	for _, parts := range s.candidatePaths() {
+		delta, err := navigatePath(payload, parts)
+		if err == nil {
+			return delta, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
+}
+
+// candidatePaths returns the split delta paths to try, computed once and cached.
+func (s *Stream) candidatePaths() [][]string {
+	if s.deltaPaths != nil {
+		return s.deltaPaths
+	}
+	raw := s.opts.DeltaPaths
+	if len(raw) == 0 {
+		raw = []string{s.opts.DeltaPath}
+	}
+	s.deltaPaths = make([][]string, 0, len(raw))
+	for _, p := range raw {
+		if p == "" {
+			continue
+		}
+		s.deltaPaths = append(s.deltaPaths, strings.Split(p, "."))
+	}
+	return s.deltaPaths
 }
 
 // navigatePath navigates a dot-separated path through a JSON object.
-func (s *Stream) navigatePath(data map[string]any, path string) (string, error) {
-	parts := strings.Split(path, ".")
+func navigatePath(data map[string]any, parts []string) (string, error) {
 	var current any = data
 
 	for _, part := range parts {
@@ -219,32 +293,6 @@ func (s *Stream) navigatePath(data map[string]any, path string) (string, error) 
 		}
 		return string(b), nil
 	}
-}
-
-// healJSON attempts to heal truncated JSON.
-func (s *Stream) healJSON(data string) string {
-	// Simple healing: ensure balanced brackets
-	openBraces := strings.Count(data, "{") - strings.Count(data, "}")
-	openBrackets := strings.Count(data, "[") - strings.Count(data, "]")
-
-	var sb strings.Builder
-	sb.WriteString(data)
-
-	// Close any open strings (simple heuristic)
-	quoteCount := strings.Count(data, `"`) - strings.Count(data, `\"`)
-	if quoteCount%2 != 0 {
-		sb.WriteByte('"')
-	}
-
-	// Close brackets and braces
-	for i := 0; i < openBrackets; i++ {
-		sb.WriteByte(']')
-	}
-	for i := 0; i < openBraces; i++ {
-		sb.WriteByte('}')
-	}
-
-	return sb.String()
 }
 
 // Chunk represents a parsed chunk from the OpenAI stream.
@@ -307,8 +355,8 @@ func (s *Stream) NextChunk() (*Chunk, error) {
 		if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 			// Try to heal if enabled
 			if s.opts.HealJSON {
-				healed := s.healJSON(event.Data)
-				if err := json.Unmarshal([]byte(healed), &chunk); err != nil {
+				healed := healer.HealJSON([]byte(event.Data))
+				if err := json.Unmarshal(healed, &chunk); err != nil {
 					continue // Skip malformed chunks
 				}
 			} else {

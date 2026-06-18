@@ -162,7 +162,7 @@ func TestHealer_WithOptions(t *testing.T) {
 	healer := NewHealer(context.Background(), strings.NewReader(input),
 		WithStripMarkdown(false),
 		WithAutoClose(true),
-		WithBufferSize(8192))
+		WithIgnoreTrailingJunk(true))
 	defer healer.Close()
 
 	// Just verify it works with options
@@ -175,9 +175,6 @@ func TestHealer_WithOptions(t *testing.T) {
 func TestOptions_Defaults(t *testing.T) {
 	opts := DefaultOptions()
 
-	if opts.BufferSize != 4096 {
-		t.Errorf("expected BufferSize 4096, got %d", opts.BufferSize)
-	}
 	if !opts.StripMarkdown {
 		t.Error("expected StripMarkdown true")
 	}
@@ -191,19 +188,19 @@ func TestOptions_Defaults(t *testing.T) {
 
 func TestOptions_WithFunctions(t *testing.T) {
 	opts := applyOptions(
-		WithBufferSize(8192),
 		WithStripMarkdown(false),
 		WithAutoClose(false),
+		WithIgnoreTrailingJunk(false),
 	)
 
-	if opts.BufferSize != 8192 {
-		t.Errorf("expected BufferSize 8192, got %d", opts.BufferSize)
-	}
 	if opts.StripMarkdown {
 		t.Error("expected StripMarkdown false")
 	}
 	if opts.AutoClose {
 		t.Error("expected AutoClose false")
+	}
+	if opts.IgnoreTrailingJunk {
+		t.Error("expected IgnoreTrailingJunk false")
 	}
 }
 

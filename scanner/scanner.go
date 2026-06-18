@@ -445,6 +445,11 @@ func (s *Scanner) step0(c byte) ScanResult {
 		s.state = StateE
 		return ScanContinue
 	}
+	// The number is complete; transition out of the numeric state before
+	// delegating, so that a whitespace byte here causes subsequent bytes
+	// to be checked against the enclosing context (e.g. ',' or '}') rather
+	// than being treated as more of this number.
+	s.state = StateEndValue
 	return s.stepEndValue(c)
 }
 
@@ -474,6 +479,8 @@ func (s *Scanner) stepDot0(c byte) ScanResult {
 		s.state = StateE
 		return ScanContinue
 	}
+	// See comment in step0: transition out of the numeric state first.
+	s.state = StateEndValue
 	return s.stepEndValue(c)
 }
 
@@ -500,6 +507,8 @@ func (s *Scanner) stepE0(c byte) ScanResult {
 	if isDigit(c) {
 		return ScanContinue
 	}
+	// See comment in step0: transition out of the numeric state first.
+	s.state = StateEndValue
 	return s.stepEndValue(c)
 }
 
