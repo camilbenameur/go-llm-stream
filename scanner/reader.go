@@ -44,6 +44,17 @@ func NewStreamReader(ctx context.Context, r io.Reader) *StreamReader {
 	}
 }
 
+// SetRejectTrailing controls whether non-whitespace content after the root JSON
+// value is reported as a TokenError (true) or silently ignored (false, the
+// default). Call it before reading begins.
+func (sr *StreamReader) SetRejectTrailing(reject bool) {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+	if sr.tok != nil {
+		sr.tok.SetRejectTrailing(reject)
+	}
+}
+
 // Close releases resources associated with the StreamReader.
 func (sr *StreamReader) Close() error {
 	sr.cancel()

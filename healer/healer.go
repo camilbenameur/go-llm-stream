@@ -118,6 +118,12 @@ func New(ctx context.Context, stream *scanner.StreamReader, options ...Option) *
 	h.ctx = ctx
 	h.cancel = cancel
 
+	// When trailing junk is not ignored, ask the underlying reader to surface
+	// content after the root value as an error instead of a clean end.
+	if stream != nil && !opts.IgnoreTrailingJunk {
+		stream.SetRejectTrailing(true)
+	}
+
 	return h
 }
 
