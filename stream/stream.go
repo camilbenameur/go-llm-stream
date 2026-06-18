@@ -34,61 +34,33 @@ const (
 	TokenError       = scanner.TokenError
 )
 
-// Options configures the stream reader and healer behavior.
+// Options configures the healer behavior. These apply to NewHealer; the plain
+// NewReader does no healing and ignores them.
 type Options struct {
-	// BufferSize is the size of the read buffer in bytes.
-	// Default: 4096
-	BufferSize int
-
 	// StripMarkdown enables stripping of markdown code block delimiters.
-	// Only applies to healer streams.
-	// Default: true (for healer)
+	// Default: true
 	StripMarkdown bool
 
 	// AutoClose enables automatic closure of unclosed JSON containers.
-	// Only applies to healer streams.
-	// Default: true (for healer)
+	// Default: true
 	AutoClose bool
 
 	// IgnoreTrailingJunk ignores content after the root JSON value closes.
-	// Only applies to healer streams.
-	// Default: true (for healer)
+	// Default: true
 	IgnoreTrailingJunk bool
-
-	// CompleteStrings automatically closes unterminated strings.
-	// Only applies to healer streams.
-	// Default: true (for healer)
-	CompleteStrings bool
-
-	// CompleteLiterals automatically completes partial literals.
-	// Only applies to healer streams.
-	// Default: true (for healer)
-	CompleteLiterals bool
 }
 
 // DefaultOptions returns the recommended default options.
 func DefaultOptions() Options {
 	return Options{
-		BufferSize:         4096,
 		StripMarkdown:      true,
 		AutoClose:          true,
 		IgnoreTrailingJunk: true,
-		CompleteStrings:    true,
-		CompleteLiterals:   true,
 	}
 }
 
 // Option is a functional option for configuring streams.
 type Option func(*Options)
-
-// WithBufferSize sets the read buffer size.
-func WithBufferSize(size int) Option {
-	return func(o *Options) {
-		if size > 0 {
-			o.BufferSize = size
-		}
-	}
-}
 
 // WithStripMarkdown enables or disables markdown stripping.
 func WithStripMarkdown(enable bool) Option {
@@ -108,20 +80,6 @@ func WithAutoClose(enable bool) Option {
 func WithIgnoreTrailingJunk(enable bool) Option {
 	return func(o *Options) {
 		o.IgnoreTrailingJunk = enable
-	}
-}
-
-// WithCompleteStrings enables or disables string completion.
-func WithCompleteStrings(enable bool) Option {
-	return func(o *Options) {
-		o.CompleteStrings = enable
-	}
-}
-
-// WithCompleteLiterals enables or disables literal completion.
-func WithCompleteLiterals(enable bool) Option {
-	return func(o *Options) {
-		o.CompleteLiterals = enable
 	}
 }
 
