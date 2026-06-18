@@ -6,17 +6,25 @@ import (
 	"sync"
 )
 
+// readResult carries the outcome of a single Read call back from the
+// cancellable read goroutine.
+type readResult struct {
+	n   int
+	err error
+}
+
 // StreamReader wraps an io.Reader and provides streaming JSON tokenization.
 // It is the primary interface for consuming LLM streams.
 type StreamReader struct {
-	reader io.Reader
-	tok    *Tokenizer
-	buf    []byte
-	ctx    context.Context
-	cancel context.CancelFunc
-	err    error
-	done   bool
-	mu     sync.Mutex
+	reader   io.Reader
+	tok      *Tokenizer
+	buf      []byte
+	ctx      context.Context
+	cancel   context.CancelFunc
+	err      error
+	done     bool
+	mu       sync.Mutex
+	resultCh chan readResult
 }
 
 // Default buffer size for reading from the underlying reader
@@ -27,11 +35,23 @@ const defaultBufSize = 4096
 func NewStreamReader(ctx context.Context, r io.Reader) *StreamReader {
 	ctx, cancel := context.WithCancel(ctx)
 	return &StreamReader{
-		reader: r,
-		tok:    NewTokenizer(),
-		buf:    make([]byte, defaultBufSize),
-		ctx:    ctx,
-		cancel: cancel,
+		reader:   r,
+		tok:      NewTokenizer(),
+		buf:      make([]byte, defaultBufSize),
+		ctx:      ctx,
+		cancel:   cancel,
+		resultCh: make(chan readResult, 1),
+	}
+}
+
+// SetRejectTrailing controls whether non-whitespace content after the root JSON
+// value is reported as a TokenError (true) or silently ignored (false, the
+// default). Call it before reading begins.
+func (sr *StreamReader) SetRejectTrailing(reject bool) {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
+	if sr.tok != nil {
+		sr.tok.SetRejectTrailing(reject)
 	}
 }
 
@@ -95,14 +115,18 @@ func (sr *StreamReader) NextToken() Token {
 		}
 
 		buf := sr.buf
+		resultCh := sr.resultCh
 		sr.mu.Unlock()
 
-		// Use a goroutine to make Read cancellable
-		type readResult struct {
-			n   int
-			err error
+		// Drain any stale result left over from a previously cancelled
+		// read before issuing a new one (the channel is reused to avoid
+		// allocating a fresh one on every call).
+		select {
+		case <-resultCh:
+		default:
 		}
-		resultCh := make(chan readResult, 1)
+
+		// Use a goroutine to make Read cancellable
 		go func() {
 			n, err := sr.reader.Read(buf)
 			resultCh <- readResult{n, err}

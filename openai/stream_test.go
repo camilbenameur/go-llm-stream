@@ -231,6 +231,42 @@ data: [DONE]
 	}
 }
 
+func TestStream_HealJSON_TruncatedPayload_Recovered(t *testing.T) {
+	// A truncated SSE event: the JSON object is cut off mid-string,
+	// with no closing quote or braces.
+	input := `data: {"choices":[{"delta":{"content":"hel
+
+data: [DONE]
+
+`
+	stream := NewStream(context.Background(), strings.NewReader(input),
+		WithHealJSON(true))
+
+	delta, err := stream.NextDelta()
+	if err != nil {
+		t.Fatalf("expected healing to recover content, got error: %v", err)
+	}
+	if delta != "hel" {
+		t.Errorf("expected healed content 'hel', got %q", delta)
+	}
+}
+
+func TestStream_NoHealJSON_TruncatedPayload_Skipped(t *testing.T) {
+	// Same truncated payload, but healing disabled: the malformed event
+	// should be skipped, leaving only [DONE] -> io.EOF.
+	input := `data: {"choices":[{"delta":{"content":"hel
+
+data: [DONE]
+
+`
+	stream := NewStream(context.Background(), strings.NewReader(input))
+
+	_, err := stream.NextDelta()
+	if err != io.EOF {
+		t.Errorf("expected truncated payload to be skipped resulting in io.EOF, got %v", err)
+	}
+}
+
 func TestStream_NextEvent(t *testing.T) {
 	input := `event: ping
 data: keep-alive
@@ -258,6 +294,89 @@ data: [DONE]
 	}
 	if !strings.Contains(event2.Data, "Hi") {
 		t.Errorf("expected data to contain 'Hi'")
+	}
+}
+
+// --- T9: stream-shape robustness ---
+
+func TestStream_AnthropicFormat(t *testing.T) {
+	input := `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" there"}}
+
+`
+	stream := NewStream(context.Background(), strings.NewReader(input), WithAnthropicFormat())
+
+	var got []string
+	for {
+		d, err := stream.NextDelta()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got = append(got, d)
+	}
+	if strings.Join(got, "") != "Hello there" {
+		t.Errorf("expected 'Hello there', got %q", got)
+	}
+}
+
+func TestStream_MultiPathFallback(t *testing.T) {
+	// One stream carrying BOTH an OpenAI-shaped event and an Anthropic-shaped
+	// event; candidate paths let a single Stream handle both.
+	input := `data: {"choices":[{"delta":{"content":"open"}}]}
+
+data: {"type":"content_block_delta","delta":{"text":"ai"}}
+
+data: [DONE]
+
+`
+	stream := NewStream(context.Background(), strings.NewReader(input),
+		WithDeltaPaths(OpenAIDeltaPath, AnthropicDeltaPath))
+
+	var got []string
+	for {
+		d, err := stream.NextDelta()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got = append(got, d)
+	}
+	if strings.Join(got, "") != "openai" {
+		t.Errorf("expected 'openai', got %q", got)
+	}
+}
+
+func TestStream_GracefullySkipsUnexpectedShapes(t *testing.T) {
+	// Empty choices, a metadata-only event, and a role-only delta must all be
+	// skipped without error; only the real content delta is returned.
+	input := `data: {"choices":[]}
+
+data: {"usage":{"total_tokens":5}}
+
+data: {"choices":[{"delta":{"role":"assistant"}}]}
+
+data: {"choices":[{"delta":{"content":"hi"}}]}
+
+data: [DONE]
+
+`
+	stream := NewStream(context.Background(), strings.NewReader(input))
+
+	d, err := stream.NextDelta()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != "hi" {
+		t.Errorf("expected 'hi', got %q", d)
+	}
+	if _, err := stream.NextDelta(); err != io.EOF {
+		t.Errorf("expected io.EOF, got %v", err)
 	}
 }
 

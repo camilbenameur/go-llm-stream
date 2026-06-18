@@ -51,12 +51,6 @@ type HealerOptions struct {
 
 	// IgnoreTrailingJunk ignores content after the root JSON value closes
 	IgnoreTrailingJunk bool
-
-	// CompleteStrings automatically closes unterminated strings
-	CompleteStrings bool
-
-	// CompleteLiterals automatically completes partial literals (true/false/null)
-	CompleteLiterals bool
 }
 
 // DefaultOptions returns the recommended healer options.
@@ -65,8 +59,6 @@ func DefaultOptions() HealerOptions {
 		StripMarkdown:      true,
 		AutoClose:          true,
 		IgnoreTrailingJunk: true,
-		CompleteStrings:    true,
-		CompleteLiterals:   true,
 	}
 }
 
@@ -125,6 +117,12 @@ func New(ctx context.Context, stream *scanner.StreamReader, options ...Option) *
 	h.err = nil
 	h.ctx = ctx
 	h.cancel = cancel
+
+	// When trailing junk is not ignored, ask the underlying reader to surface
+	// content after the root value as an error instead of a clean end.
+	if stream != nil && !opts.IgnoreTrailingJunk {
+		stream.SetRejectTrailing(true)
+	}
 
 	return h
 }

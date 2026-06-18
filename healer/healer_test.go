@@ -8,6 +8,50 @@ import (
 	"github.com/camilbenameur/go-llm-stream/scanner"
 )
 
+func TestHealer_IgnoreTrailingJunk(t *testing.T) {
+	// LLMs often emit prose after a JSON block. With the default (ignore),
+	// the trailing text is dropped and the stream ends cleanly.
+	input := `{"a":1} and here is why I chose that...`
+
+	t.Run("default ignores trailing junk", func(t *testing.T) {
+		h := NewFromReader(context.Background(), strings.NewReader(input),
+			WithStripMarkdown(false))
+		defer h.Close()
+
+		var sawError, sawEOF bool
+		for tok := range h.Tokens() {
+			switch tok.Kind {
+			case scanner.TokenError:
+				sawError = true
+			case scanner.TokenEOF:
+				sawEOF = true
+			}
+		}
+		if sawError {
+			t.Error("expected no error with trailing junk ignored")
+		}
+		if !sawEOF {
+			t.Error("expected a clean EOF")
+		}
+	})
+
+	t.Run("rejects trailing junk when disabled", func(t *testing.T) {
+		h := NewFromReader(context.Background(), strings.NewReader(input),
+			WithStripMarkdown(false), WithIgnoreTrailingJunk(false))
+		defer h.Close()
+
+		var sawError bool
+		for tok := range h.Tokens() {
+			if tok.Kind == scanner.TokenError {
+				sawError = true
+			}
+		}
+		if !sawError {
+			t.Error("expected a TokenError for content after the root value")
+		}
+	})
+}
+
 func TestHealer_CompleteJSON(t *testing.T) {
 	// Complete JSON should pass through unchanged
 	input := `{"name": "John", "age": 30}`
