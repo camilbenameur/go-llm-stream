@@ -51,6 +51,14 @@ _Nothing yet._
   PERFORMANCE.md reframed around the library's real differentiators: healing,
   incremental field access, and resumability.
 
+### Removed
+
+- Non-functional configuration that silently had no effect: `stream.WithBufferSize`
+  /`Options.BufferSize` (the underlying `StreamReader` takes no buffer size),
+  `stream.WithCompleteStrings`/`WithCompleteLiterals` (never forwarded to the healer),
+  and the unused `CompleteStrings`/`CompleteLiterals` fields on `healer.HealerOptions`.
+  These knobs were dead weight and misleading — removing them keeps the API honest.
+
 ## [1.2.0] - 2026-01-26
 
 ### Changed

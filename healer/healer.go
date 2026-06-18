@@ -51,12 +51,6 @@ type HealerOptions struct {
 
 	// IgnoreTrailingJunk ignores content after the root JSON value closes
 	IgnoreTrailingJunk bool
-
-	// CompleteStrings automatically closes unterminated strings
-	CompleteStrings bool
-
-	// CompleteLiterals automatically completes partial literals (true/false/null)
-	CompleteLiterals bool
 }
 
 // DefaultOptions returns the recommended healer options.
@@ -65,8 +59,6 @@ func DefaultOptions() HealerOptions {
 		StripMarkdown:      true,
 		AutoClose:          true,
 		IgnoreTrailingJunk: true,
-		CompleteStrings:    true,
-		CompleteLiterals:   true,
 	}
 }
 
