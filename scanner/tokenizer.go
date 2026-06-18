@@ -1,8 +1,13 @@
 package scanner
 
 import (
+	"errors"
 	"sync"
 )
+
+// errTrailingData is reported when input contains non-whitespace content after
+// the top-level JSON value and the tokenizer is configured to reject it.
+var errTrailingData = errors.New("unexpected content after top-level JSON value")
 
 // TokenKind represents the type of a JSON token.
 type TokenKind uint8
@@ -114,6 +119,10 @@ type Tokenizer struct {
 
 	// Pending token to emit (for multi-token transitions)
 	pendingToken *Token
+
+	// rejectTrailing reports non-whitespace content after the root value as an
+	// error instead of silently ending the stream.
+	rejectTrailing bool
 }
 
 // Pool for tokenizer reuse
@@ -164,6 +173,13 @@ func (t *Tokenizer) Reset() {
 	t.isKey = false
 	t.literalBuf = t.literalBuf[:0]
 	t.pendingToken = nil
+	t.rejectTrailing = false
+}
+
+// SetRejectTrailing controls whether non-whitespace content after the top-level
+// value is reported as an error (true) or silently ignored (false, the default).
+func (t *Tokenizer) SetRejectTrailing(reject bool) {
+	t.rejectTrailing = reject
 }
 
 // Append adds more data to the tokenizer's buffer.
@@ -411,6 +427,18 @@ func (t *Tokenizer) NextToken() Token {
 				token := t.completeLiteral()
 				t.inLiteral = false
 				return token
+			}
+			// ScanEnd (not in a literal) only happens when a non-whitespace byte
+			// appears after the root value — i.e. trailing data. Genuine
+			// end-of-input exhausts the buffer instead and never reaches here.
+			if t.rejectTrailing {
+				return Token{
+					Kind:      TokenError,
+					Start:     t.bufferOffset + int64(t.position-1),
+					End:       t.bufferOffset + int64(t.position),
+					Completed: true,
+					Err:       errTrailingData,
+				}
 			}
 			return Token{
 				Kind:      TokenEOF,

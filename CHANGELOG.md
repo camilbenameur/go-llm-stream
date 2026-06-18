@@ -36,6 +36,9 @@ _Nothing yet._
 - **OpenAI adapter**: healing now routes through the real `healer` package instead of a
   naive `strings.Count` bracket balancer, removing an internal contradiction with the
   library's own thesis.
+- **`IgnoreTrailingJunk` is now actually honored** (it was previously a no-op). With the
+  default (`true`) trailing content after the root value is still ignored; setting it
+  `false` now makes the healer surface a `TokenError` for content after the root closes.
 
 ### Performance
 
