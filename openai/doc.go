@@ -16,4 +16,8 @@
 //	    }
 //	    fmt.Print(delta)
 //	}
+//
+// By default it reads OpenAI-style chunks (choices.0.delta.content). Use
+// WithDeltaPaths or WithAnthropicFormat to consume other shapes (e.g. Anthropic
+// content_block_delta) from the same Stream; events without content are skipped.
 package openai

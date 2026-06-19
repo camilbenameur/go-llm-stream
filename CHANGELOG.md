@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Docs in sync with the API**: corrected the `healer.New` godoc example (it was
+  missing the `ctx` argument), reconciled the `scanner` package doc's benchmark
+  numbers with `docs/PERFORMANCE.md`, and documented the push `Writer` and the
+  OpenAI/Anthropic multi-shape options (`WithDeltaPaths`/`WithAnthropicFormat`).
+  Added a runnable `ExampleWriter` so the push-API doc is verified by `go test`.
 
 ## [1.3.0] - 2026-06-15
 

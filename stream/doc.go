@@ -23,6 +23,16 @@
 //	    // Automatically healed tokens
 //	}
 //
+// # Push instead of pull
+//
+// When chunks are pushed to you (rather than read from an io.Reader), use the
+// io.Writer-based Writer:
+//
+//	w := stream.NewWriter()
+//	w.OnToken = func(t stream.Token) { /* handle each completed token */ }
+//	w.Write(chunk) // feed bytes as they arrive
+//	w.Close()      // flush and emit any final tokens
+//
 // # SSE + OpenAI Streaming
 //
 //	import "github.com/camilbenameur/go-llm-stream/openai"

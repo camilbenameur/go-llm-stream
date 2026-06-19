@@ -10,7 +10,7 @@ The Go standard library already streams JSON well (`encoding/json.Decoder` is O(
 
 - **Healing of malformed / truncated JSON.** Models hit token limits, drop connections, or wrap output in ```` ```json ```` fences. The [`healer`](healer/) closes unterminated strings, containers, and partial literals (`tru` → `true`) and strips markdown — turning "almost-JSON" into valid JSON you can unmarshal.
 - **Incremental, field-at-a-time consumption.** A single large structured-output object (or a tool call's `arguments`) streams across hundreds of chunks. The [`scanner`](scanner/) processes each byte **exactly once** and emits tokens as they complete, so you can render `title` before the model has finished writing `body`.
-- **Resumability.** `Snapshot`/`Restore` lets you persist parser state mid-stream and resume after a reconnect — no re-reading from the top.
+- **Resumability.** The low-level `Scanner`/`Tokenizer` expose `Snapshot`/`Restore` to persist parser state mid-stream and resume after a reconnect — no re-reading from the top.
 - **Pull *or* push.** Supply an `io.Reader` (`stream.NewReader`/`NewHealer`) or write chunks in as they arrive via the `io.Writer`-based `stream.Writer`.
 - **Provider-flexible deltas.** The `openai` adapter extracts content by configurable JSON path; `WithDeltaPaths`/`WithAnthropicFormat` let one stream consume OpenAI- and Anthropic-shaped events.
 - **Zero-allocation core.** Fed a contiguous buffer, the low-level `Scanner` runs at 300+ MB/s with **0 allocations** (verified — see [Performance](#performance)).
