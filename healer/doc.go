@@ -23,7 +23,7 @@
 //
 //	reader := getOpenAIStream()
 //	stream := scanner.NewStreamReader(ctx, reader)
-//	healed := healer.New(stream)
+//	healed := healer.New(ctx, stream)
 //	defer healed.Close()
 //
 //	for token := range healed.Tokens() {
@@ -44,5 +44,6 @@
 //   - Markdown code block delimiters in output
 //   - Unclosed strings, objects, and arrays
 //   - Trailing commas before closure
-//   - Junk text after valid JSON (ignored)
+//   - Junk text after valid JSON (ignored by default; set IgnoreTrailingJunk
+//     to false to surface it as an error)
 package healer

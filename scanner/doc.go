@@ -73,9 +73,9 @@
 //
 // # Performance
 //
-// Benchmark results on AMD Ryzen 5 7600X:
-//
-//	BenchmarkScannerSmall-12    15200902    77.54 ns/op   348 MB/s   0 B/op
-//	BenchmarkScannerMedium-12     153454  7621 ns/op     354 MB/s   0 B/op
-//	BenchmarkTokenizerSmall-12  4737880   248.4 ns/op    108 MB/s   163 B/op
+// The low-level Scanner processes JSON at ~300 MB/s with zero allocations when
+// fed a contiguous buffer (BenchmarkScannerSmall: ~85 ns/op, 316 MB/s, 0
+// allocs/op). The Tokenizer and StreamReader allocate proportionally to input
+// as they materialize tokens. See docs/PERFORMANCE.md for the full, reproducible
+// benchmark suite.
 package scanner
