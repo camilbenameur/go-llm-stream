@@ -16,15 +16,19 @@ type readResult struct {
 // StreamReader wraps an io.Reader and provides streaming JSON tokenization.
 // It is the primary interface for consuming LLM streams.
 type StreamReader struct {
-	reader   io.Reader
-	tok      *Tokenizer
-	buf      []byte
-	ctx      context.Context
-	cancel   context.CancelFunc
-	err      error
-	done     bool
-	mu       sync.Mutex
-	resultCh chan readResult
+	reader io.Reader
+	tok    *Tokenizer
+	buf    []byte
+	ctx    context.Context
+	cancel context.CancelFunc
+	err    error
+	done   bool
+	// Final stats, captured at Close so the accessors keep working
+	// after the tokenizer has been returned to the pool.
+	finalDepth int
+	finalBytes int64
+	mu         sync.Mutex
+	resultCh   chan readResult
 }
 
 // Default buffer size for reading from the underlying reader
@@ -61,6 +65,8 @@ func (sr *StreamReader) Close() error {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 	if sr.tok != nil {
+		sr.finalDepth = sr.tok.Depth()
+		sr.finalBytes = sr.tok.BytesConsumed()
 		sr.tok.Free()
 		sr.tok = nil
 	}
@@ -86,6 +92,12 @@ func (sr *StreamReader) NextToken() Token {
 
 		// Try to get a token from the tokenizer
 		sr.mu.Lock()
+		if sr.tok == nil {
+			// Closed concurrently. Line 151 guards the same case after a
+			// read; this path is reached when Close lands first.
+			sr.mu.Unlock()
+			return Token{Kind: TokenEOF, Completed: true}
+		}
 		token := sr.tok.NextToken()
 		sr.mu.Unlock()
 
@@ -214,6 +226,9 @@ func (sr *StreamReader) Err() error {
 func (sr *StreamReader) Depth() int {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
+	if sr.tok == nil {
+		return sr.finalDepth
+	}
 	return sr.tok.Depth()
 }
 
@@ -221,5 +236,8 @@ func (sr *StreamReader) Depth() int {
 func (sr *StreamReader) BytesConsumed() int64 {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
+	if sr.tok == nil {
+		return sr.finalBytes
+	}
 	return sr.tok.BytesConsumed()
 }

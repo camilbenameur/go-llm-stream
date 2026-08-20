@@ -254,13 +254,13 @@ func StripMarkdown(data []byte) []byte {
 	result := f.Filter(data)
 	flushed := f.Flush()
 
-	if len(flushed) == 0 {
-		return result
-	}
-
-	combined := make([]byte, len(result)+len(flushed))
-	copy(combined, result)
-	copy(combined[len(result):], flushed)
+	// Both result and flushed alias buffers owned by f, which the deferred
+	// Free returns to the pool. The caller must never see pooled memory:
+	// a later StripMarkdown would silently rewrite this slice in place.
+	// Always copy out.
+	combined := make([]byte, 0, len(result)+len(flushed))
+	combined = append(combined, result...)
+	combined = append(combined, flushed...)
 	return combined
 }
 

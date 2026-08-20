@@ -250,6 +250,13 @@ func (h *Healer) handleEOF() scanner.Token {
 		return scanner.Token{Kind: scanner.TokenEOF, Completed: true}
 	}
 
+	// Closer is nil once Close has run. A concurrent Close must not panic
+	// this goroutine: the caller has no way to recover from it.
+	if h.closer == nil {
+		h.eof = true
+		return scanner.Token{Kind: scanner.TokenEOF, Completed: true}
+	}
+
 	// Generate closure tokens
 	closure := h.closer.Closure()
 	if len(closure) == 0 {
@@ -273,6 +280,11 @@ func (h *Healer) handleEOF() scanner.Token {
 
 // handleError processes errors and attempts to heal.
 func (h *Healer) handleError(token scanner.Token) scanner.Token {
+	// See handleEOF: Close may have run concurrently.
+	if h.closer == nil {
+		return token
+	}
+
 	// Generate closure tokens based on current state
 	closure := h.closer.Closure()
 	if len(closure) == 0 {
@@ -408,6 +420,9 @@ func (h *Healer) Err() error {
 
 // Depth returns the current nesting depth.
 func (h *Healer) Depth() int {
+	if h.closer == nil {
+		return 0
+	}
 	return h.closer.Depth()
 }
 

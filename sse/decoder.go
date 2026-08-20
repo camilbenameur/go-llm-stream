@@ -5,6 +5,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Event represents a single Server-Sent Event.
@@ -32,10 +33,32 @@ type Decoder struct {
 	err     error
 }
 
+// DefaultMaxLineSize is the largest single SSE line NewDecoder accepts.
+//
+// bufio.Scanner defaults to 64 KiB, which is too small in practice: a single
+// data: line carrying tool-call arguments routinely exceeds it, and the
+// failure is unrecoverable (the decoder latches the error and the stream
+// ends). The cap still has to exist, because an SSE line that never
+// terminates would otherwise grow without bound.
+const DefaultMaxLineSize = 8 << 20 // 8 MiB
+
 // NewDecoder creates a new SSE decoder that reads from r.
+// Lines longer than DefaultMaxLineSize are rejected; use NewDecoderSize to
+// choose a different limit.
 func NewDecoder(r io.Reader) *Decoder {
+	return NewDecoderSize(r, DefaultMaxLineSize)
+}
+
+// NewDecoderSize creates an SSE decoder that accepts lines up to maxLineSize
+// bytes. A non-positive maxLineSize selects DefaultMaxLineSize.
+func NewDecoderSize(r io.Reader, maxLineSize int) *Decoder {
+	if maxLineSize <= 0 {
+		maxLineSize = DefaultMaxLineSize
+	}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 	return &Decoder{
-		scanner: bufio.NewScanner(r),
+		scanner: sc,
 	}
 }
 
@@ -149,10 +172,12 @@ func parseField(line string) (field, value string) {
 // EventStream represents a streaming SSE event iterator.
 // It provides a channel-based interface for consuming events.
 type EventStream struct {
-	decoder *Decoder
-	events  chan Event
-	err     error
-	done    chan struct{}
+	decoder   *Decoder
+	events    chan Event
+	mu        sync.Mutex
+	err       error
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 // NewEventStream creates a channel-based SSE event stream.
@@ -172,7 +197,9 @@ func (s *EventStream) run() {
 		event, err := s.decoder.Next()
 		if err != nil {
 			if err != io.EOF {
+				s.mu.Lock()
 				s.err = err
+				s.mu.Unlock()
 			}
 			return
 		}
@@ -189,12 +216,16 @@ func (s *EventStream) Events() <-chan Event {
 	return s.events
 }
 
-// Close stops the event stream.
+// Close stops the event stream. It is safe to call more than once and from
+// multiple goroutines.
 func (s *EventStream) Close() {
-	close(s.done)
+	s.closeOnce.Do(func() { close(s.done) })
 }
 
 // Err returns any error encountered during streaming.
+// It is safe to call concurrently with a drain of Events.
 func (s *EventStream) Err() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.err
 }
